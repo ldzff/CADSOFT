@@ -14,7 +14,7 @@ using System.ComponentModel;
 using System.Linq;
 using IxMilia.Dxf; // Required for DxfFile
 using IxMilia.Dxf.Entities;
-using System.Diagnostics; // Added for Debug.WriteLine
+// using System.Diagnostics; // No longer needed after removing Trace calls
 // using netDxf.Header; // No longer needed with IxMilia.Dxf
 using System.IO;
 // using System.Windows.Threading; // Was for optional Dispatcher.Invoke, not currently used.
@@ -299,20 +299,13 @@ namespace RobTeach.Views
 
         private void CurrentPassTrajectoriesListBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
-            Trace.WriteLine("++++ CurrentPassTrajectoriesListBox_SelectionChanged Fired ++++");
-            Trace.Flush();
             UpdateSelectedTrajectoryDetailUI(); // Renamed
             UpdateDirectionIndicator(); // Add call to update direction indicator
         }
 
         private void UpdateDirectionIndicator()
         {
-            Trace.WriteLine("++++ UpdateDirectionIndicator Fired ++++");
-            Trace.Flush();
             const double fixedArrowLineLength = 15.0; // Fixed visual length for the arrow's line segment
-
-            Trace.WriteLine($"  -- UpdateDirectionIndicator: Checking CurrentPassTrajectoriesListBox.SelectedItem. Type: {CurrentPassTrajectoriesListBox.SelectedItem?.GetType()?.FullName ?? "null"}, Value: {CurrentPassTrajectoriesListBox.SelectedItem?.ToString() ?? "null"}");
-            Trace.Flush();
 
             // Initial Setup
             if (_directionIndicator == null)
@@ -320,9 +313,9 @@ namespace RobTeach.Views
                 _directionIndicator = new DirectionIndicator
                 {
                     // Set appearance properties that don't change per trajectory
-                    Color = System.Windows.Media.Brushes.Red, // Stays Red
-                    ArrowheadSize = 8,    // Reverted from 20
-                    StrokeThickness = 1.5 // Reverted from 5
+                    Color = SelectedStrokeBrush, // Changed to use the existing field for selection color
+                    ArrowheadSize = 8,           // Remains 8
+                    StrokeThickness = 1.5        // Remains 1.5
                 };
             }
 
@@ -335,11 +328,460 @@ namespace RobTeach.Views
             // Get Selected Trajectory
             if (CurrentPassTrajectoriesListBox.SelectedItem is Trajectory selectedTrajectory)
             {
-                Trace.WriteLine($"  -- Successfully cast to Trajectory. PrimitiveType from cast: {selectedTrajectory?.PrimitiveType ?? "null trajectory object"}");
-                Trace.Flush();
-                if (selectedTrajectory.Points != null && selectedTrajectory.Points.Any())
+                if (selectedTrajectory.Points == null || !selectedTrajectory.Points.Any())
                 {
-                    Trace.WriteLine($"UpdateDirectionIndicator: Trajectory '{selectedTrajectory.PrimitiveType}' selected. Point count: {selectedTrajectory.Points.Count}");
+                    return;
+                }
+
+                List<System.Windows.Point> points = selectedTrajectory.Points;
+                Point calculatedArrowStartPoint = new Point(); // Use local variables for calculation
+                Point calculatedArrowEndPoint = new Point();   // Use local variables for calculation
+                Point primitiveCenter = new Point();
+                bool addIndicator = false;
+
+                // Calculate primitiveCenter first
+                switch (selectedTrajectory.PrimitiveType)
+                {
+                    case "Line":
+                        if (points.Count >= 2)
+                        {
+                            Point lineStartWpf = points[0];
+                            Point lineEndWpf = points[points.Count - 1];
+                            primitiveCenter = new Point((lineStartWpf.X + lineEndWpf.X) / 2, (lineStartWpf.Y + lineEndWpf.Y) / 2);
+                        }
+                        else
+                        {
+                            // addIndicator remains false, so arrow won't be drawn if this path is taken and not overridden
+                        }
+                        break;
+                    case "Arc":
+                        primitiveCenter = new Point(selectedTrajectory.ArcCenter.X, selectedTrajectory.ArcCenter.Y);
+                        break;
+                    case "Circle":
+                        primitiveCenter = new Point(selectedTrajectory.CircleCenter.X, selectedTrajectory.CircleCenter.Y);
+                        break;
+                    default:
+                        // addIndicator remains false
+                        break;
+                }
+
+                // This switch calculates the actual arrow points using primitiveCenter
+                // addIndicator is determined here based on successful calculation for arrow points
+                switch (selectedTrajectory.PrimitiveType)
+                {
+                    case "Line":
+                        if (points.Count >= 2)
+                        {
+                            Point visualStartPoint = points[0]; // Already respects IsReversed
+                            Point visualEndPoint = points[points.Count - 1]; // Already respects IsReversed
+                            Vector direction = visualEndPoint - visualStartPoint;
+
+                            if (direction.Length > 0)
+                            {
+                                direction.Normalize();
+                                calculatedArrowStartPoint = primitiveCenter;
+                                calculatedArrowEndPoint = primitiveCenter + direction * fixedArrowLineLength;
+                                addIndicator = true;
+                            } else { addIndicator = false; }
+                        }
+                        else { addIndicator = false; }
+                        break;
+                    case "Arc":
+                        if (points.Count >= 2)
+                        {
+                            Point p0 = points[0]; // Start of the visual arc segment
+                            Point p1 = points[1]; // Next point on the visual arc segment
+                            Vector direction = p1 - p0;
+
+                            if (direction.Length > 0)
+                            {
+                                direction.Normalize();
+                                calculatedArrowStartPoint = primitiveCenter;
+                                calculatedArrowEndPoint = primitiveCenter + direction * fixedArrowLineLength;
+                                addIndicator = true;
+                            } else { addIndicator = false; }
+                        }
+                        else { addIndicator = false; }
+                        break;
+                    case "Circle":
+                        if (points.Count >= 2)
+                        {
+                            Point p0 = points[0]; // Start of the visual circle segment
+                            Point p1 = points[1]; // Next point on the visual circle segment
+                            Vector direction = p1 - p0;
+
+                            if (direction.Length > 0)
+                            {
+                                direction.Normalize();
+                                calculatedArrowStartPoint = primitiveCenter;
+                                calculatedArrowEndPoint = primitiveCenter + direction * fixedArrowLineLength;
+                                addIndicator = true;
+                            } else { addIndicator = false; }
+                        }
+                        else { addIndicator = false; }
+                        break;
+                    default:
+                        addIndicator = false;
+                        break;
+                }
+
+                bool canAddIndicator = addIndicator && calculatedArrowStartPoint != calculatedArrowEndPoint;
+
+                if (canAddIndicator)
+                {
+                    _directionIndicator.StartPoint = calculatedArrowStartPoint;
+                    _directionIndicator.EndPoint = calculatedArrowEndPoint;
+                    System.Windows.Controls.Panel.SetZIndex(_directionIndicator, 99);
+                    CadCanvas.Children.Add(_directionIndicator);
+                }
+            }
+        }
+
+        private void MoveTrajectoryUpButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (_currentConfiguration.CurrentPassIndex < 0 || _currentConfiguration.CurrentPassIndex >= _currentConfiguration.SprayPasses.Count) return;
+            var currentPass = _currentConfiguration.SprayPasses[_currentConfiguration.CurrentPassIndex];
+            var selectedIndex = CurrentPassTrajectoriesListBox.SelectedIndex;
+
+            if (selectedIndex > 0 && currentPass.Trajectories.Count > selectedIndex)
+            {
+                var itemToMove = currentPass.Trajectories[selectedIndex];
+                currentPass.Trajectories.RemoveAt(selectedIndex);
+                currentPass.Trajectories.Insert(selectedIndex - 1, itemToMove);
+
+                CurrentPassTrajectoriesListBox.ItemsSource = null;
+                CurrentPassTrajectoriesListBox.ItemsSource = currentPass.Trajectories;
+                CurrentPassTrajectoriesListBox.SelectedIndex = selectedIndex - 1;
+                RefreshCadCanvasHighlights();
+                UpdateDirectionIndicator();
+            }
+        }
+
+        private void MoveTrajectoryDownButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (_currentConfiguration.CurrentPassIndex < 0 || _currentConfiguration.CurrentPassIndex >= _currentConfiguration.SprayPasses.Count) return;
+            var currentPass = _currentConfiguration.SprayPasses[_currentConfiguration.CurrentPassIndex];
+            var selectedIndex = CurrentPassTrajectoriesListBox.SelectedIndex;
+
+            if (selectedIndex >= 0 && selectedIndex < currentPass.Trajectories.Count - 1)
+            {
+                var itemToMove = currentPass.Trajectories[selectedIndex];
+                currentPass.Trajectories.RemoveAt(selectedIndex);
+                currentPass.Trajectories.Insert(selectedIndex + 1, itemToMove);
+
+                CurrentPassTrajectoriesListBox.ItemsSource = null;
+                CurrentPassTrajectoriesListBox.ItemsSource = currentPass.Trajectories;
+                CurrentPassTrajectoriesListBox.SelectedIndex = selectedIndex + 1;
+                RefreshCadCanvasHighlights();
+                UpdateDirectionIndicator();
+            }
+        }
+
+        private void UpdateSelectedTrajectoryDetailUI()
+        {
+            // Nozzle settings part
+            if (CurrentPassTrajectoriesListBox.SelectedItem is Trajectory selectedTrajectory)
+            {
+                // Enable all nozzle checkboxes
+                TrajectoryUpperNozzleEnabledCheckBox.IsEnabled = true;
+                TrajectoryLowerNozzleEnabledCheckBox.IsEnabled = true;
+                // Gas/Liquid enabled state will be set by their respective 'Enabled' checkbox change handlers
+
+                // Set IsChecked status for nozzle settings from selected trajectory
+                TrajectoryUpperNozzleEnabledCheckBox.IsChecked = selectedTrajectory.UpperNozzleEnabled;
+                TrajectoryUpperNozzleGasOnCheckBox.IsChecked = selectedTrajectory.UpperNozzleGasOn;
+                TrajectoryUpperNozzleLiquidOnCheckBox.IsChecked = selectedTrajectory.UpperNozzleLiquidOn;
+                TrajectoryLowerNozzleEnabledCheckBox.IsChecked = selectedTrajectory.LowerNozzleEnabled;
+                TrajectoryLowerNozzleGasOnCheckBox.IsChecked = selectedTrajectory.LowerNozzleGasOn;
+                TrajectoryLowerNozzleLiquidOnCheckBox.IsChecked = selectedTrajectory.LowerNozzleLiquidOn;
+
+                // Call handlers to correctly set IsEnabled for Gas/Liquid checkboxes
+                TrajectoryUpperNozzleEnabledCheckBox_Changed(null, null);
+                TrajectoryLowerNozzleEnabledCheckBox_Changed(null, null);
+
+                // Geometry settings part
+                TrajectoryIsReversedCheckBox.IsChecked = selectedTrajectory.IsReversed;
+
+                // Visibility of IsReversed checkbox (only for Line/Arc)
+                if (selectedTrajectory.PrimitiveType == "Line" || selectedTrajectory.PrimitiveType == "Arc")
+                {
+                    TrajectoryIsReversedCheckBox.Visibility = Visibility.Visible;
+                }
+                else
+                {
+                    TrajectoryIsReversedCheckBox.Visibility = Visibility.Collapsed;
+                }
+
+                // Visibility and content of Z-coordinate panels
+                LineHeightControlsPanel.Visibility = selectedTrajectory.PrimitiveType == "Line" ? Visibility.Visible : Visibility.Collapsed;
+                ArcHeightControlsPanel.Visibility = selectedTrajectory.PrimitiveType == "Arc" ? Visibility.Visible : Visibility.Collapsed;
+                CircleHeightControlsPanel.Visibility = selectedTrajectory.PrimitiveType == "Circle" ? Visibility.Visible : Visibility.Collapsed;
+
+                if (selectedTrajectory.PrimitiveType == "Line")
+                {
+                    LineStartZTextBox.Text = selectedTrajectory.LineStartPoint.Z.ToString("F3");
+                    LineEndZTextBox.Text = selectedTrajectory.LineEndPoint.Z.ToString("F3");
+                }
+                else if (selectedTrajectory.PrimitiveType == "Arc")
+                {
+                    ArcCenterZTextBox.Text = selectedTrajectory.ArcCenter.Z.ToString("F3");
+                }
+                else if (selectedTrajectory.PrimitiveType == "Circle")
+                {
+                    CircleCenterZTextBox.Text = selectedTrajectory.CircleCenter.Z.ToString("F3");
+                }
+            }
+            else
+            {
+                // Disable and uncheck all nozzle checkboxes
+                TrajectoryUpperNozzleEnabledCheckBox.IsEnabled = false;
+                TrajectoryUpperNozzleGasOnCheckBox.IsEnabled = false;
+                TrajectoryUpperNozzleLiquidOnCheckBox.IsEnabled = false;
+                TrajectoryLowerNozzleEnabledCheckBox.IsEnabled = false;
+                TrajectoryLowerNozzleGasOnCheckBox.IsEnabled = false;
+                TrajectoryLowerNozzleLiquidOnCheckBox.IsEnabled = false;
+
+                TrajectoryUpperNozzleEnabledCheckBox.IsChecked = false;
+                TrajectoryUpperNozzleGasOnCheckBox.IsChecked = false;
+                TrajectoryUpperNozzleLiquidOnCheckBox.IsChecked = false;
+                TrajectoryLowerNozzleEnabledCheckBox.IsChecked = false;
+                TrajectoryLowerNozzleGasOnCheckBox.IsChecked = false;
+                TrajectoryLowerNozzleLiquidOnCheckBox.IsChecked = false;
+
+                // Collapse geometry UI elements
+                TrajectoryIsReversedCheckBox.Visibility = Visibility.Collapsed;
+                TrajectoryIsReversedCheckBox.IsChecked = false;
+                LineHeightControlsPanel.Visibility = Visibility.Collapsed;
+                ArcHeightControlsPanel.Visibility = Visibility.Collapsed;
+                CircleHeightControlsPanel.Visibility = Visibility.Collapsed;
+                LineStartZTextBox.Text = string.Empty;
+                LineEndZTextBox.Text = string.Empty;
+                ArcCenterZTextBox.Text = string.Empty;
+                CircleCenterZTextBox.Text = string.Empty;
+            }
+        }
+
+        private void TrajectoryIsReversedCheckBox_Changed(object sender, RoutedEventArgs e)
+        {
+            if (CurrentPassTrajectoriesListBox.SelectedItem is Trajectory selectedTrajectory)
+            {
+                selectedTrajectory.IsReversed = TrajectoryIsReversedCheckBox.IsChecked ?? false;
+                PopulateTrajectoryPoints(selectedTrajectory);
+                CurrentPassTrajectoriesListBox.Items.Refresh();
+                RefreshCadCanvasHighlights();
+                UpdateDirectionIndicator();
+            }
+        }
+
+        private void PopulateTrajectoryPoints(Trajectory trajectory)
+        {
+            if (trajectory == null) return;
+
+            trajectory.Points.Clear();
+
+            switch (trajectory.PrimitiveType)
+            {
+                case "Line":
+                    trajectory.Points.AddRange(_cadService.ConvertLineTrajectoryToPoints(trajectory));
+                    break;
+                case "Arc":
+                    trajectory.Points.AddRange(_cadService.ConvertArcTrajectoryToPoints(trajectory, TrajectoryPointResolutionAngle));
+                    break;
+                case "Circle":
+                    trajectory.Points.AddRange(_cadService.ConvertCircleTrajectoryToPoints(trajectory, TrajectoryPointResolutionAngle));
+                    break;
+                default:
+                    // For other types or if PrimitiveType is not set, Points will remain empty or could be populated from OriginalDxfEntity if needed
+                    // For now, we rely on the specific Convert<Primitive>TrajectoryToPoints methods.
+                    // If OriginalDxfEntity exists and is of a known DxfEntityType, could fall back to old methods:
+                    if (trajectory.OriginalDxfEntity != null) {
+                        switch (trajectory.OriginalDxfEntity) {
+                            case DxfLine line: trajectory.Points.AddRange(_cadService.ConvertLineToPoints(line)); break;
+                            case DxfArc arc: trajectory.Points.AddRange(_cadService.ConvertArcToPoints(arc, TrajectoryPointResolutionAngle)); break;
+                            case DxfCircle circle: trajectory.Points.AddRange(_cadService.ConvertCircleToPoints(circle, TrajectoryPointResolutionAngle)); break;
+                        }
+                    }
+                    break;
+            }
+        }
+
+        private void TrajectoryUpperNozzleEnabledCheckBox_Changed(object sender, RoutedEventArgs e)
+        {
+            bool isEnabled = TrajectoryUpperNozzleEnabledCheckBox.IsChecked ?? false;
+            TrajectoryUpperNozzleGasOnCheckBox.IsEnabled = isEnabled;
+            TrajectoryUpperNozzleLiquidOnCheckBox.IsEnabled = isEnabled;
+
+            if (CurrentPassTrajectoriesListBox.SelectedItem is Trajectory selectedTrajectory)
+            {
+                selectedTrajectory.UpperNozzleEnabled = isEnabled;
+                if (!isEnabled)
+                {
+                    TrajectoryUpperNozzleGasOnCheckBox.IsChecked = false;
+                    TrajectoryUpperNozzleLiquidOnCheckBox.IsChecked = false;
+                    selectedTrajectory.UpperNozzleGasOn = false;
+                    selectedTrajectory.UpperNozzleLiquidOn = false;
+                }
+            }
+            else if (!isEnabled)
+            {
+                TrajectoryUpperNozzleGasOnCheckBox.IsChecked = false;
+                TrajectoryUpperNozzleLiquidOnCheckBox.IsChecked = false;
+            }
+        }
+
+        private void TrajectoryUpperNozzleGasOnCheckBox_Changed(object sender, RoutedEventArgs e)
+        {
+            if (CurrentPassTrajectoriesListBox.SelectedItem is Trajectory selectedTrajectory)
+            {
+                selectedTrajectory.UpperNozzleGasOn = TrajectoryUpperNozzleGasOnCheckBox.IsChecked ?? false;
+            }
+        }
+
+        private void TrajectoryUpperNozzleLiquidOnCheckBox_Changed(object sender, RoutedEventArgs e)
+        {
+            if (CurrentPassTrajectoriesListBox.SelectedItem is Trajectory selectedTrajectory)
+            {
+                selectedTrajectory.UpperNozzleLiquidOn = TrajectoryUpperNozzleLiquidOnCheckBox.IsChecked ?? false;
+            }
+        }
+
+        private void TrajectoryLowerNozzleEnabledCheckBox_Changed(object sender, RoutedEventArgs e)
+        {
+            bool isEnabled = TrajectoryLowerNozzleEnabledCheckBox.IsChecked ?? false;
+            TrajectoryLowerNozzleGasOnCheckBox.IsEnabled = isEnabled;
+            TrajectoryLowerNozzleLiquidOnCheckBox.IsEnabled = isEnabled;
+
+            if (CurrentPassTrajectoriesListBox.SelectedItem is Trajectory selectedTrajectory)
+            {
+                selectedTrajectory.LowerNozzleEnabled = isEnabled;
+                if (!isEnabled)
+                {
+                    TrajectoryLowerNozzleGasOnCheckBox.IsChecked = false;
+                    TrajectoryLowerNozzleLiquidOnCheckBox.IsChecked = false;
+                    selectedTrajectory.LowerNozzleGasOn = false;
+                    selectedTrajectory.LowerNozzleLiquidOn = false;
+                }
+            }
+            else if (!isEnabled)
+            {
+                 TrajectoryLowerNozzleGasOnCheckBox.IsChecked = false;
+                 TrajectoryLowerNozzleLiquidOnCheckBox.IsChecked = false;
+            }
+        }
+
+        private void TrajectoryLowerNozzleGasOnCheckBox_Changed(object sender, RoutedEventArgs e)
+        {
+            if (CurrentPassTrajectoriesListBox.SelectedItem is Trajectory selectedTrajectory)
+            {
+                selectedTrajectory.LowerNozzleGasOn = TrajectoryLowerNozzleGasOnCheckBox.IsChecked ?? false;
+            }
+        }
+
+        private void TrajectoryLowerNozzleLiquidOnCheckBox_Changed(object sender, RoutedEventArgs e)
+        {
+            if (CurrentPassTrajectoriesListBox.SelectedItem is Trajectory selectedTrajectory)
+            {
+                selectedTrajectory.LowerNozzleLiquidOn = TrajectoryLowerNozzleLiquidOnCheckBox.IsChecked ?? false;
+            }
+        }
+
+        /// <summary>
+        /// Handles the Closing event of the window. Ensures Modbus connection is disconnected.
+        /// </summary>
+        private void MainWindow_Closing(object sender, CancelEventArgs e)
+        {
+            _modbusService.Disconnect();
+        }
+
+        /// <summary>
+        /// Handles the Click event of the "Load DXF" button.
+        /// Prompts the user to select a DXF file, loads it using <see cref="CadService"/>,
+        /// processes its entities for display, and fits the view to the loaded drawing.
+        /// </summary>
+        private void LoadDxfButton_Click(object sender, RoutedEventArgs e)
+        {
+            OpenFileDialog openFileDialog = new OpenFileDialog {
+                Filter = "DXF files (*.dxf)|*.dxf|All files (*.*)|*.*", Title = "Load DXF File" };
+            string initialDir = Path.GetFullPath(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "..", ".."));
+            if (!Directory.Exists(initialDir)) initialDir = "/app/RobTeachProject/RobTeach/";
+            openFileDialog.InitialDirectory = initialDir;
+
+            try {
+                if (openFileDialog.ShowDialog() == true) {
+                    _currentDxfFilePath = openFileDialog.FileName;
+                    StatusTextBlock.Text = $"Loading DXF: {Path.GetFileName(_currentDxfFilePath)}...";
+
+                    CadCanvas.Children.Clear();
+                    _wpfShapeToDxfEntityMap.Clear(); _selectedDxfEntities.Clear();
+                    _trajectoryPreviewPolylines.Clear(); _dxfEntityHandleMap.Clear();
+                    _currentConfiguration = new Models.Configuration { ProductName = ProductNameTextBox.Text };
+                    _currentLoadedConfigPath = null;
+                    _currentDxfDocument = null;
+                    _dxfBoundingBox = Rect.Empty;
+                    UpdateTrajectoryPreview();
+                    UpdateDirectionIndicator();
+
+                    _currentDxfDocument = _cadService.LoadDxf(_currentDxfFilePath);
+
+                    if (_currentDxfDocument == null) {
+                        StatusTextBlock.Text = "Failed to load DXF document (null document returned).";
+                        MessageBox.Show("The DXF document could not be loaded. The file might be empty or an unknown error occurred.", "Error Loading DXF", MessageBoxButton.OK, MessageBoxImage.Error);
+                        return;
+                    }
+
+                    // Note: IxMilia.Dxf doesn't expose Handle property directly
+                    // We'll skip handle mapping for now
+
+                    List<System.Windows.Shapes.Shape> wpfShapes = _cadService.GetWpfShapesFromDxf(_currentDxfDocument);
+                    int shapeIndex = 0;
+
+                    foreach(var entity in _currentDxfDocument.Entities)
+                    {
+                        if (shapeIndex < wpfShapes.Count && wpfShapes[shapeIndex] != null) {
+                            var wpfShape = wpfShapes[shapeIndex];
+                            wpfShape.Stroke = DefaultStrokeBrush;
+                            wpfShape.StrokeThickness = DefaultStrokeThickness;
+                            wpfShape.MouseLeftButtonDown += OnCadEntityClicked;
+                            _wpfShapeToDxfEntityMap[wpfShape] = entity;
+                            CadCanvas.Children.Add(wpfShape);
+                            shapeIndex++;
+                        }
+                    }
+
+                    _dxfBoundingBox = GetDxfBoundingBox(_currentDxfDocument);
+                    PerformFitToView();
+                    StatusTextBlock.Text = $"Loaded: {Path.GetFileName(_currentDxfFilePath)}. Click shapes to select.";
+                    UpdateDirectionIndicator();
+                } else { StatusTextBlock.Text = "DXF loading cancelled."; }
+            }
+            catch (FileNotFoundException fnfEx) {
+                StatusTextBlock.Text = "Error: DXF file not found.";
+                MessageBox.Show($"DXF file not found:\n{fnfEx.Message}", "Error Loading DXF", MessageBoxButton.OK, MessageBoxImage.Error);
+                _currentDxfDocument = null;
+            }
+            // Removed specific catch for netDxf.DxfVersionNotSupportedException. General Exception will handle DXF-specific errors.
+            catch (Exception ex) {
+                StatusTextBlock.Text = "Error loading or processing DXF file.";
+                MessageBox.Show($"An error occurred while loading or processing the DXF file:\n{ex.Message}\n\nEnsure the file is a valid DXF format.", "Error Loading DXF", MessageBoxButton.OK, MessageBoxImage.Error);
+                _currentDxfDocument = null;
+                CadCanvas.Children.Clear();
+                _selectedDxfEntities.Clear(); _wpfShapeToDxfEntityMap.Clear(); _dxfEntityHandleMap.Clear();
+                _trajectoryPreviewPolylines?.Clear();
+                _currentConfiguration = new Models.Configuration { ProductName = ProductNameTextBox.Text };
+                UpdateTrajectoryPreview();
+                UpdateDirectionIndicator();
+            }
+        }
+
+        /// <summary>
+        /// Handles the click event on a CAD entity shape, toggling its selection state.
+        /// </summary>
+        private void OnCadEntityClicked(object sender, MouseButtonEventArgs e)
+        {
+            Trajectory trajectoryToSelect = null;
+
+            // Detailed check for the main condition
+            bool isShape = sender is System.Windows.Shapes.Shape;
                     for (int i = 0; i < selectedTrajectory.Points.Count; i++)
                     {
                         Trace.WriteLine($"  Point[{i}]: ({selectedTrajectory.Points[i].X:F3}, {selectedTrajectory.Points[i].Y:F3})");
@@ -352,11 +794,13 @@ namespace RobTeach.Views
                     return; // Cannot proceed without points
                 }
 
-                List<System.Windows.Point> points = selectedTrajectory.Points;
+                List<System.Windows.Point> points = selectedTrajectory.Points; // Keep using points from selectedTrajectory for arrow calculation
                 Point arrowStartPoint = new Point();
                 Point arrowEndPoint = new Point();
-                bool addIndicator = false;
+                // addIndicator is reset here for arrow calculation logic specifically
+                addIndicator = false;
 
+                // This switch calculates the actual arrow points
                 switch (selectedTrajectory.PrimitiveType)
                 {
                     case "Line":
@@ -774,7 +1218,7 @@ namespace RobTeach.Views
         {
             Trace.WriteLine("++++ OnCadEntityClicked Fired ++++");
             Trace.Flush();
-            Trajectory trajectoryToSelect = null; // Declare at wider scope
+            Trajectory trajectoryToSelect = null;
 
             // Detailed check for the main condition
             bool isShape = sender is System.Windows.Shapes.Shape;
@@ -783,26 +1227,14 @@ namespace RobTeach.Views
             {
                 keyExists = _wpfShapeToDxfEntityMap.ContainsKey((System.Windows.Shapes.Shape)sender);
             }
-            Trace.WriteLine($"  -- Checking sender type: {sender?.GetType().Name ?? "null"}, IsShape: {isShape}, Map contains key: {keyExists}");
-            Trace.Flush();
 
             if (isShape && keyExists)
             {
                 System.Windows.Shapes.Shape clickedShape = (System.Windows.Shapes.Shape)sender;
-                Trace.WriteLine("  -- Condition (sender is Shape AND _wpfShapeToDxfEntityMap contains key) MET");
-                Trace.Flush();
-
                 var dxfEntity = _wpfShapeToDxfEntityMap[clickedShape];
-                Trace.WriteLine($"  -- Retrieved dxfEntity: {dxfEntity?.GetType().Name ?? "null"}");
-                Trace.Flush();
                 
-                // Logic for adding/removing from current spray pass's trajectories
-                Trace.WriteLine($"  -- Checking current pass index: {_currentConfiguration.CurrentPassIndex}, SprayPasses count: {_currentConfiguration.SprayPasses?.Count ?? 0}");
-                Trace.Flush();
                 if (_currentConfiguration.CurrentPassIndex < 0 || _currentConfiguration.CurrentPassIndex >= _currentConfiguration.SprayPasses.Count)
                 {
-                    Trace.WriteLine("  -- Current pass index invalid, returning.");
-                    Trace.Flush();
                     MessageBox.Show("Please select or create a spray pass first.", "No Active Pass", MessageBoxButton.OK, MessageBoxImage.Information);
                     return;
                 }
@@ -812,22 +1244,15 @@ namespace RobTeach.Views
 
                 if (existingTrajectory != null)
                 {
-                    // Deselect - Remove from current pass
-                    Trace.WriteLine("  -- Existing trajectory found. Removing it.");
-                    Trace.Flush();
                     currentPass.Trajectories.Remove(existingTrajectory);
-                    // trajectoryToSelect remains null, so selection will likely clear or move.
                 }
                 else
                 {
-                    // Select - Add to current pass
-                    Trace.WriteLine("  -- No existing trajectory. Creating and adding new one.");
-                    Trace.Flush();
                     var newTrajectory = new Trajectory
                     {
                         OriginalDxfEntity = dxfEntity,
-                        EntityType = dxfEntity.GetType().Name, // General type, can be overridden by PrimitiveType
-                        IsReversed = false // Default, can be changed by specific logic below or UI
+                        EntityType = dxfEntity.GetType().Name,
+                        IsReversed = false
                     };
 
                     switch (dxfEntity)
@@ -867,7 +1292,7 @@ namespace RobTeach.Views
                     }
                     PopulateTrajectoryPoints(newTrajectory);
                     currentPass.Trajectories.Add(newTrajectory);
-                    trajectoryToSelect = newTrajectory; // Mark this new trajectory for selection
+                    trajectoryToSelect = newTrajectory;
                 }
 
                 RefreshCurrentPassTrajectoriesListBox();
@@ -875,27 +1300,12 @@ namespace RobTeach.Views
                 if (trajectoryToSelect != null)
                 {
                     CurrentPassTrajectoriesListBox.SelectedItem = trajectoryToSelect;
-                    Trace.WriteLine($"  -- Explicitly set CurrentPassTrajectoriesListBox.SelectedItem to: {trajectoryToSelect.ToString()}");
                 }
-                else if (existingTrajectory != null) // It was a deselection, and existingTrajectory was the one removed
-                {
-                    Trace.WriteLine($"  -- Trajectory deselected. CurrentPassTrajectoriesListBox.SelectedItem is now: {CurrentPassTrajectoriesListBox.SelectedItem?.ToString() ?? "null"}");
-                }
-                Trace.Flush();
 
                 RefreshCadCanvasHighlights();
                 StatusTextBlock.Text = $"Selected {currentPass.Trajectories.Count} trajectories in {currentPass.PassName}.";
 
-                Trace.WriteLine("  -- About to call UpdateDirectionIndicator from OnCadEntityClicked");
-                Trace.Flush();
-                UpdateDirectionIndicator(); // Selection changed by clicking CAD entity
-            }
-            else
-            {
-                Trace.WriteLine("  -- Condition (sender is Shape AND _wpfShapeToDxfEntityMap contains key) FAILED");
-                Trace.Flush();
-                // It's possible that the click was on the canvas background or another UI element not part of the DXF drawing.
-                // No return needed here unless this path should explicitly not do anything further.
+                UpdateDirectionIndicator();
             }
         }
 
