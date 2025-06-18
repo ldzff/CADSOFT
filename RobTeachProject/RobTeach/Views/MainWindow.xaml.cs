@@ -311,7 +311,7 @@ namespace RobTeach.Views
             Trace.Flush();
             const double fixedArrowLineLength = 15.0; // Fixed visual length for the arrow's line segment
 
-            Trace.WriteLine($"  -- Checking CurrentPassTrajectoriesListBox.SelectedItem. Type: {CurrentPassTrajectoriesListBox.SelectedItem?.GetType()?.FullName ?? "null"}, Value: {CurrentPassTrajectoriesListBox.SelectedItem?.ToString() ?? "null"}");
+            Trace.WriteLine($"  -- UpdateDirectionIndicator: Checking CurrentPassTrajectoriesListBox.SelectedItem. Type: {CurrentPassTrajectoriesListBox.SelectedItem?.GetType()?.FullName ?? "null"}, Value: {CurrentPassTrajectoriesListBox.SelectedItem?.ToString() ?? "null"}");
             Trace.Flush();
 
             // Initial Setup
@@ -774,6 +774,7 @@ namespace RobTeach.Views
         {
             Trace.WriteLine("++++ OnCadEntityClicked Fired ++++");
             Trace.Flush();
+            Trajectory trajectoryToSelect = null; // Declare at wider scope
 
             // Detailed check for the main condition
             bool isShape = sender is System.Windows.Shapes.Shape;
@@ -807,34 +808,32 @@ namespace RobTeach.Views
                 }
                 var currentPass = _currentConfiguration.SprayPasses[_currentConfiguration.CurrentPassIndex];
 
-                // Check if this DxfEntity (or its corresponding Trajectory) is already in the current pass
-                // This requires Trajectory to store the original DxfEntity or a unique ID.
-                // Assuming Trajectory has an 'OriginalDxfEntity' property of type DxfEntity.
                 var existingTrajectory = currentPass.Trajectories.FirstOrDefault(t => t.OriginalDxfEntity == dxfEntity);
 
                 if (existingTrajectory != null)
                 {
                     // Deselect - Remove from current pass
+                    Trace.WriteLine("  -- Existing trajectory found. Removing it.");
+                    Trace.Flush();
                     currentPass.Trajectories.Remove(existingTrajectory);
-                    // Visual update will be handled by RefreshCadCanvasHighlights
+                    // trajectoryToSelect remains null, so selection will likely clear or move.
                 }
                 else
                 {
                     // Select - Add to current pass
+                    Trace.WriteLine("  -- No existing trajectory. Creating and adding new one.");
+                    Trace.Flush();
                     var newTrajectory = new Trajectory
                     {
                         OriginalDxfEntity = dxfEntity,
                         EntityType = dxfEntity.GetType().Name, // General type, can be overridden by PrimitiveType
                         IsReversed = false // Default, can be changed by specific logic below or UI
-                        // New nozzle properties default to false in the Trajectory model.
                     };
 
-                    // Set PrimitiveType and extract geometric parameters
                     switch (dxfEntity)
                     {
                         case DxfLine line:
                             newTrajectory.PrimitiveType = "Line";
-                            // Default direction: start from point closer to origin (0,0,0)
                             double p1DistSq = line.P1.X * line.P1.X + line.P1.Y * line.P1.Y + line.P1.Z * line.P1.Z;
                             double p2DistSq = line.P2.X * line.P2.X + line.P2.Y * line.P2.Y + line.P2.Z * line.P2.Z;
                             if (p1DistSq <= p2DistSq)
@@ -847,7 +846,6 @@ namespace RobTeach.Views
                                 newTrajectory.LineStartPoint = line.P2;
                                 newTrajectory.LineEndPoint = line.P1;
                             }
-                            // newTrajectory.IsReversed is already false
                             break;
                         case DxfArc arc:
                             newTrajectory.PrimitiveType = "Arc";
@@ -856,48 +854,36 @@ namespace RobTeach.Views
                             newTrajectory.ArcStartAngle = arc.StartAngle;
                             newTrajectory.ArcEndAngle = arc.EndAngle;
                             newTrajectory.ArcNormal = arc.Normal;
-                            // newTrajectory.IsReversed is already false
                             break;
                         case DxfCircle circle:
                             newTrajectory.PrimitiveType = "Circle";
                             newTrajectory.CircleCenter = circle.Center;
                             newTrajectory.CircleRadius = circle.Radius;
                             newTrajectory.CircleNormal = circle.Normal;
-                            // newTrajectory.IsReversed is already false (not typically applicable to full circle path)
                             break;
                         default:
                             newTrajectory.PrimitiveType = dxfEntity.GetType().Name;
-                            // Geometric properties remain default for unhandled types
                             break;
                     }
-
-                    // Populate Points for display/temporary use (based on original, un-reversed data)
-                    // List<System.Windows.Point> entityPoints = new List<System.Windows.Point>(); // Old direct population
-                    // switch (dxfEntity) // Use original dxfEntity for point conversion // Old direct population
-                    // {
-                    // case DxfLine line: entityPoints = _cadService.ConvertLineToPoints(line); break; // Old direct population
-                    // case DxfArc arc: entityPoints = _cadService.ConvertArcToPoints(arc, TrajectoryPointResolutionAngle); break; // Old direct population
-                    // case DxfCircle circle: entityPoints = _cadService.ConvertCircleToPoints(circle, TrajectoryPointResolutionAngle); break; // Old direct population
-                    //     // Add other supported types if necessary
-                    // }
-                    // newTrajectory.Points = entityPoints; // Old direct population
-                    PopulateTrajectoryPoints(newTrajectory); // New call
-                    currentPass.Trajectories.Add(newTrajectory); // Add to the list
-                    // Visual update will be handled by RefreshCadCanvasHighlights
+                    PopulateTrajectoryPoints(newTrajectory);
+                    currentPass.Trajectories.Add(newTrajectory);
+                    trajectoryToSelect = newTrajectory; // Mark this new trajectory for selection
                 }
-                
-                RefreshCurrentPassTrajectoriesListBox(); // This rebinds ItemsSource
 
-                // Explicitly select the newTrajectory or existingTrajectory in the ListBox
-                var trajectoryToSelect = existingTrajectory ?? newTrajectory;
+                RefreshCurrentPassTrajectoriesListBox();
+
                 if (trajectoryToSelect != null)
                 {
                     CurrentPassTrajectoriesListBox.SelectedItem = trajectoryToSelect;
                     Trace.WriteLine($"  -- Explicitly set CurrentPassTrajectoriesListBox.SelectedItem to: {trajectoryToSelect.ToString()}");
-                    Trace.Flush();
                 }
+                else if (existingTrajectory != null) // It was a deselection, and existingTrajectory was the one removed
+                {
+                    Trace.WriteLine($"  -- Trajectory deselected. CurrentPassTrajectoriesListBox.SelectedItem is now: {CurrentPassTrajectoriesListBox.SelectedItem?.ToString() ?? "null"}");
+                }
+                Trace.Flush();
 
-                RefreshCadCanvasHighlights(); // Centralized visual update
+                RefreshCadCanvasHighlights();
                 StatusTextBlock.Text = $"Selected {currentPass.Trajectories.Count} trajectories in {currentPass.PassName}.";
 
                 Trace.WriteLine("  -- About to call UpdateDirectionIndicator from OnCadEntityClicked");
