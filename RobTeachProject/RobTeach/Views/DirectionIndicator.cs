@@ -2,6 +2,7 @@ using System;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Shapes;
+using System.Diagnostics; // Added for Debug.WriteLine
 
 namespace RobTeach.Views
 {
@@ -68,8 +69,13 @@ namespace RobTeach.Views
         {
             get
             {
+                Debug.WriteLine($"DirectionIndicator.DefiningGeometry: StartPoint=({StartPoint.X:F3}, {StartPoint.Y:F3}), EndPoint=({EndPoint.X:F3}, {EndPoint.Y:F3}), ArrowheadSize={ArrowheadSize:F3}");
+
                 if (StartPoint == EndPoint || ArrowheadSize <= 0)
+                {
+                    Debug.WriteLine("  -> Returning Geometry.Empty (StartPoint == EndPoint or ArrowheadSize <= 0)");
                     return Geometry.Empty;
+                }
 
                 // Set Fill and Stroke for the shape.
                 // The Color property of this class is used as the source.
@@ -87,7 +93,10 @@ namespace RobTeach.Views
                 // Calculate direction vector of the arrow line
                 Vector dir = EndPoint - StartPoint;
                 if (dir.Length == 0) // Should be caught by StartPoint == EndPoint, but as a safeguard
+                {
+                    Debug.WriteLine("  -> Returning Geometry.Empty (Direction vector length is 0 after initial check)");
                     return Geometry.Empty;
+                }
                 dir.Normalize();
 
                 // Angle of the arrowhead wings relative to the arrow line
@@ -122,6 +131,7 @@ namespace RobTeach.Views
                 arrowheadFigure.IsFilled = true;  // Ensure the arrowhead is filled
                 pathGeometry.Figures.Add(arrowheadFigure);
 
+                Debug.WriteLine($"  -> Returning PathGeometry with {pathGeometry.Figures.Count} figures.");
                 return pathGeometry;
             }
         }

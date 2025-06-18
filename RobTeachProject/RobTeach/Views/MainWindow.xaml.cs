@@ -14,6 +14,7 @@ using System.ComponentModel;
 using System.Linq;
 using IxMilia.Dxf; // Required for DxfFile
 using IxMilia.Dxf.Entities;
+using System.Diagnostics; // Added for Debug.WriteLine
 // using netDxf.Header; // No longer needed with IxMilia.Dxf
 using System.IO;
 // using System.Windows.Threading; // Was for optional Dispatcher.Invoke, not currently used.
@@ -325,9 +326,22 @@ namespace RobTeach.Views
             }
 
             // Get Selected Trajectory
-            if (CurrentPassTrajectoriesListBox.SelectedItem is Trajectory selectedTrajectory &&
-                selectedTrajectory.Points != null && selectedTrajectory.Points.Any())
+            if (CurrentPassTrajectoriesListBox.SelectedItem is Trajectory selectedTrajectory)
             {
+                if (selectedTrajectory.Points != null && selectedTrajectory.Points.Any())
+                {
+                    Debug.WriteLine($"UpdateDirectionIndicator: Trajectory '{selectedTrajectory.PrimitiveType}' selected. Point count: {selectedTrajectory.Points.Count}");
+                    for (int i = 0; i < selectedTrajectory.Points.Count; i++)
+                    {
+                        Debug.WriteLine($"  Point[{i}]: ({selectedTrajectory.Points[i].X:F3}, {selectedTrajectory.Points[i].Y:F3})");
+                    }
+                }
+                else
+                {
+                    Debug.WriteLine($"UpdateDirectionIndicator: Trajectory '{selectedTrajectory.PrimitiveType}' selected but Points list is null or empty.");
+                    return; // Cannot proceed without points
+                }
+
                 List<System.Windows.Point> points = selectedTrajectory.Points;
                 Point arrowStartPoint = new Point();
                 Point arrowEndPoint = new Point();
@@ -348,6 +362,7 @@ namespace RobTeach.Views
                                 arrowStartPoint = actualEndPoint - direction * fixedArrowLineLength;
                                 arrowEndPoint = actualEndPoint;
                                 addIndicator = true;
+                                Debug.WriteLine($"  Line Arrow Calc: ArrowStart=({arrowStartPoint.X:F3}, {arrowStartPoint.Y:F3}), ArrowEnd=({arrowEndPoint.X:F3}, {arrowEndPoint.Y:F3})");
                             }
                         }
                         break;
@@ -364,6 +379,7 @@ namespace RobTeach.Views
                                 arrowStartPoint = actualEndPoint - direction * fixedArrowLineLength;
                                 arrowEndPoint = actualEndPoint;
                                 addIndicator = true;
+                                Debug.WriteLine($"  Arc Arrow Calc: ArrowStart=({arrowStartPoint.X:F3}, {arrowStartPoint.Y:F3}), ArrowEnd=({arrowEndPoint.X:F3}, {arrowEndPoint.Y:F3})");
                             }
                         }
                         break;
@@ -380,6 +396,7 @@ namespace RobTeach.Views
                                 arrowStartPoint = p0;
                                 arrowEndPoint = p0 + direction * fixedArrowLineLength;
                                 addIndicator = true;
+                                Debug.WriteLine($"  Circle Arrow Calc: ArrowStart=({arrowStartPoint.X:F3}, {arrowStartPoint.Y:F3}), ArrowEnd=({arrowEndPoint.X:F3}, {arrowEndPoint.Y:F3})");
                             }
                         }
                         break;
@@ -388,17 +405,16 @@ namespace RobTeach.Views
                         break;
                 }
 
-                if (addIndicator)
+                bool canAddIndicator = addIndicator && arrowStartPoint != arrowEndPoint; // Check calculated points before assigning to indicator
+                Debug.WriteLine($"UpdateDirectionIndicator: Condition to add indicator met: {canAddIndicator}");
+
+                if (canAddIndicator)
                 {
                     _directionIndicator.StartPoint = arrowStartPoint;
                     _directionIndicator.EndPoint = arrowEndPoint;
-
-                    // Final check to prevent adding if points somehow ended up identical
-                    if (_directionIndicator.StartPoint != _directionIndicator.EndPoint)
-                    {
-                        System.Windows.Controls.Panel.SetZIndex(_directionIndicator, 99); // Set a high Z-index
-                        CadCanvas.Children.Add(_directionIndicator);
-                    }
+                    Debug.WriteLine($"  Final Arrow Points: Start=({_directionIndicator.StartPoint.X:F3}, {_directionIndicator.StartPoint.Y:F3}), End=({_directionIndicator.EndPoint.X:F3}, {_directionIndicator.EndPoint.Y:F3})");
+                    System.Windows.Controls.Panel.SetZIndex(_directionIndicator, 99); // Set a high Z-index
+                    CadCanvas.Children.Add(_directionIndicator);
                 }
             }
             // If no valid trajectory is selected, it has no points, or type is unhandled, indicator is already removed/not added.
