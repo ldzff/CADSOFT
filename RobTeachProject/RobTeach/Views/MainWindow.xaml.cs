@@ -299,6 +299,8 @@ namespace RobTeach.Views
 
         private void CurrentPassTrajectoriesListBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
+            Trace.WriteLine("++++ CurrentPassTrajectoriesListBox_SelectionChanged Fired ++++");
+            Trace.Flush();
             UpdateSelectedTrajectoryDetailUI(); // Renamed
             UpdateDirectionIndicator(); // Add call to update direction indicator
         }
@@ -763,6 +765,8 @@ namespace RobTeach.Views
         /// </summary>
         private void OnCadEntityClicked(object sender, MouseButtonEventArgs e)
         {
+            Trace.WriteLine("++++ OnCadEntityClicked Fired ++++");
+            Trace.Flush();
             if (sender is System.Windows.Shapes.Shape clickedShape && _wpfShapeToDxfEntityMap.ContainsKey(clickedShape))
             {
                 var dxfEntity = _wpfShapeToDxfEntityMap[clickedShape]; // This now correctly gets DxfEntity
