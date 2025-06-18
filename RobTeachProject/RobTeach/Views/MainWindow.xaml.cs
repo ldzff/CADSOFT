@@ -4,6 +4,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 // Explicitly using System.Windows.Shapes.Shape to avoid ambiguity
 // using System.Windows.Shapes; // This line can be removed if all Shape usages are qualified
+using RobTeach.Views; // Added for DirectionIndicator
 using Microsoft.Win32;
 using RobTeach.Services;
 using RobTeach.Models;
@@ -43,6 +44,7 @@ namespace RobTeach.Views
         private readonly Dictionary<System.Windows.Shapes.Shape, DxfEntity> _wpfShapeToDxfEntityMap = new Dictionary<System.Windows.Shapes.Shape, DxfEntity>(); // Changed to DxfEntity
         private readonly Dictionary<string, DxfEntity> _dxfEntityHandleMap = new Dictionary<string, DxfEntity>(); // Maps DXF entity handles to entities for quick lookup when loading configs.
         private readonly List<System.Windows.Shapes.Polyline> _trajectoryPreviewPolylines = new List<System.Windows.Shapes.Polyline>(); // Keeps track of trajectory preview polylines for easy removal.
+        private DirectionIndicator _directionIndicator; // Field for the direction indicator arrow
 
         // Fields for CAD Canvas Zoom/Pan functionality
         private ScaleTransform _scaleTransform;         // Handles scaling (zoom) of the canvas content.
@@ -216,6 +218,7 @@ namespace RobTeach.Views
             SprayPassesListBox.ItemsSource = null;
             SprayPassesListBox.ItemsSource = _currentConfiguration.SprayPasses;
             SprayPassesListBox.SelectedItem = newPass;
+            UpdateDirectionIndicator(); // New pass selected, current trajectory selection changes
         }
 
         private void RemovePassButton_Click(object sender, RoutedEventArgs e)
@@ -243,6 +246,7 @@ namespace RobTeach.Views
                     // Potentially add a new default pass here if needed
                 }
                 RefreshCurrentPassTrajectoriesListBox(); // Update trajectory list for new selected pass
+                UpdateDirectionIndicator(); // Pass removed, current trajectory selection changes
             }
         }
 
@@ -276,6 +280,7 @@ namespace RobTeach.Views
             RefreshCurrentPassTrajectoriesListBox();
             UpdateSelectedTrajectoryDetailUI(); // Renamed
             RefreshCadCanvasHighlights();
+            UpdateDirectionIndicator(); // Spray pass selection changed
         }
 
         private void RefreshCurrentPassTrajectoriesListBox()
@@ -294,6 +299,106 @@ namespace RobTeach.Views
         private void CurrentPassTrajectoriesListBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             UpdateSelectedTrajectoryDetailUI(); // Renamed
+            UpdateDirectionIndicator(); // Add call to update direction indicator
+        }
+
+        private void UpdateDirectionIndicator()
+        {
+            const double fixedArrowLineLength = 15.0; // Fixed visual length for the arrow's line segment
+
+            // Initial Setup
+            if (_directionIndicator == null)
+            {
+                _directionIndicator = new DirectionIndicator();
+                // Set appearance properties that don't change per trajectory
+                _directionIndicator.Color = Brushes.Blue; // Example color
+                _directionIndicator.ArrowheadSize = 8;
+                _directionIndicator.StrokeThickness = 1.5;
+            }
+
+            // Always remove if present, to handle deselection or invalid states correctly
+            if (CadCanvas.Children.Contains(_directionIndicator))
+            {
+                CadCanvas.Children.Remove(_directionIndicator);
+            }
+
+            // Get Selected Trajectory
+            if (CurrentPassTrajectoriesListBox.SelectedItem is Trajectory selectedTrajectory &&
+                selectedTrajectory.Points != null && selectedTrajectory.Points.Any())
+            {
+                List<System.Windows.Point> points = selectedTrajectory.Points;
+                Point arrowStartPoint = new Point();
+                Point arrowEndPoint = new Point();
+                bool addIndicator = false;
+
+                switch (selectedTrajectory.PrimitiveType)
+                {
+                    case "Line":
+                        if (points.Count >= 2)
+                        {
+                            Point actualEndPoint = points[points.Count - 1];
+                            Point actualStartPoint = points[0]; // Use the actual start of the line for overall direction
+                            Vector direction = actualEndPoint - actualStartPoint;
+
+                            if (direction.Length > 0)
+                            {
+                                direction.Normalize();
+                                arrowStartPoint = actualEndPoint - direction * fixedArrowLineLength;
+                                arrowEndPoint = actualEndPoint;
+                                addIndicator = true;
+                            }
+                        }
+                        break;
+                    case "Arc":
+                        if (points.Count >= 2)
+                        {
+                            Point actualEndPoint = points[points.Count - 1];
+                            Point pointBeforeEnd = points[points.Count - 2];
+                            Vector direction = actualEndPoint - pointBeforeEnd;
+
+                            if (direction.Length > 0)
+                            {
+                                direction.Normalize();
+                                arrowStartPoint = actualEndPoint - direction * fixedArrowLineLength;
+                                arrowEndPoint = actualEndPoint;
+                                addIndicator = true;
+                            }
+                        }
+                        break;
+                    case "Circle": // Indicates initial direction
+                        if (points.Count >= 2)
+                        {
+                            Point p0 = points[0];
+                            Point p1 = points[1];
+                            Vector direction = p1 - p0;
+
+                            if (direction.Length > 0)
+                            {
+                                direction.Normalize();
+                                arrowStartPoint = p0;
+                                arrowEndPoint = p0 + direction * fixedArrowLineLength;
+                                addIndicator = true;
+                            }
+                        }
+                        break;
+                    default:
+                        // Unknown primitive type, do not show indicator
+                        break;
+                }
+
+                if (addIndicator)
+                {
+                    _directionIndicator.StartPoint = arrowStartPoint;
+                    _directionIndicator.EndPoint = arrowEndPoint;
+
+                    // Final check to prevent adding if points somehow ended up identical
+                    if (_directionIndicator.StartPoint != _directionIndicator.EndPoint)
+                    {
+                        CadCanvas.Children.Add(_directionIndicator);
+                    }
+                }
+            }
+            // If no valid trajectory is selected, it has no points, or type is unhandled, indicator is already removed/not added.
         }
 
         private void MoveTrajectoryUpButton_Click(object sender, RoutedEventArgs e)
@@ -312,6 +417,7 @@ namespace RobTeach.Views
                 CurrentPassTrajectoriesListBox.ItemsSource = currentPass.Trajectories;
                 CurrentPassTrajectoriesListBox.SelectedIndex = selectedIndex - 1;
                 RefreshCadCanvasHighlights(); // Visual update after reorder
+                UpdateDirectionIndicator(); // Selection might change or visual needs refresh
             }
         }
 
@@ -331,6 +437,7 @@ namespace RobTeach.Views
                 CurrentPassTrajectoriesListBox.ItemsSource = currentPass.Trajectories;
                 CurrentPassTrajectoriesListBox.SelectedIndex = selectedIndex + 1;
                 RefreshCadCanvasHighlights(); // Visual update after reorder
+                UpdateDirectionIndicator(); // Selection might change or visual needs refresh
             }
         }
 
@@ -426,7 +533,7 @@ namespace RobTeach.Views
                 PopulateTrajectoryPoints(selectedTrajectory); // Regenerate points
                 CurrentPassTrajectoriesListBox.Items.Refresh(); // Update display if ToString() changed or for other bound properties
                 RefreshCadCanvasHighlights(); // May be needed if visual representation on canvas depends on points/direction
-                // TODO: Consider if UpdateTrajectoryPreview() or a more specific canvas update is needed if Points directly affect drawn shape
+                UpdateDirectionIndicator(); // Update arrow when direction changes
             }
         }
 
@@ -576,6 +683,7 @@ namespace RobTeach.Views
                     _currentDxfDocument = null;
                     _dxfBoundingBox = Rect.Empty;
                     UpdateTrajectoryPreview();
+                    UpdateDirectionIndicator(); // Clear old indicator early
 
                     _currentDxfDocument = _cadService.LoadDxf(_currentDxfFilePath);
 
@@ -607,6 +715,7 @@ namespace RobTeach.Views
                     _dxfBoundingBox = GetDxfBoundingBox(_currentDxfDocument);
                     PerformFitToView();
                     StatusTextBlock.Text = $"Loaded: {Path.GetFileName(_currentDxfFilePath)}. Click shapes to select.";
+                    UpdateDirectionIndicator(); // Update after loading and potential default selections
                 } else { StatusTextBlock.Text = "DXF loading cancelled."; }
             }
             catch (FileNotFoundException fnfEx) {
@@ -624,6 +733,7 @@ namespace RobTeach.Views
                 _trajectoryPreviewPolylines?.Clear();
                 _currentConfiguration = new Models.Configuration { ProductName = ProductNameTextBox.Text };
                 UpdateTrajectoryPreview();
+                UpdateDirectionIndicator(); // Clear indicator on error too
             }
         }
 
@@ -727,6 +837,7 @@ namespace RobTeach.Views
                 RefreshCurrentPassTrajectoriesListBox(); // Update the listbox view
                 RefreshCadCanvasHighlights(); // Centralized visual update
                 StatusTextBlock.Text = $"Selected {currentPass.Trajectories.Count} trajectories in {currentPass.PassName}.";
+                UpdateDirectionIndicator(); // Selection changed by clicking CAD entity
             }
         }
 
@@ -880,6 +991,7 @@ namespace RobTeach.Views
                     RefreshCurrentPassTrajectoriesListBox(); // Update trajectory list for the (newly) current pass
                     UpdateSelectedTrajectoryDetailUI(); // Renamed: Update nozzle UI for potentially selected trajectory
                     RefreshCadCanvasHighlights(); // Update canvas highlights for the loaded pass
+                    UpdateDirectionIndicator(); // Config loaded, selection might have changed
 
                     // Assuming _cadService.GetWpfShapesFromDxf and entity selection logic
                     // might need to be re-run or updated if the config implies specific CAD entities.
@@ -901,6 +1013,7 @@ namespace RobTeach.Views
                     // The old global nozzle checkbox resets are removed.
                     // UpperNozzleOnCheckBox_Changed(null, null); // Removed
                     // LowerNozzleOnCheckBox_Changed(null, null); // Removed
+                    UpdateDirectionIndicator(); // Clear indicator if error during load
                 }
             }
             else
