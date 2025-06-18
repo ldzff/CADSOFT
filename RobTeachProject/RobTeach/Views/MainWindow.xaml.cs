@@ -309,11 +309,13 @@ namespace RobTeach.Views
             // Initial Setup
             if (_directionIndicator == null)
             {
-                _directionIndicator = new DirectionIndicator();
-                // Set appearance properties that don't change per trajectory
-                _directionIndicator.Color = Brushes.Blue; // Example color
-                _directionIndicator.ArrowheadSize = 8;
-                _directionIndicator.StrokeThickness = 1.5;
+                _directionIndicator = new DirectionIndicator
+                {
+                    // Set appearance properties that don't change per trajectory
+                    Color = System.Windows.Media.Brushes.Red, // Stays Red
+                    ArrowheadSize = 8,    // Reverted from 20
+                    StrokeThickness = 1.5 // Reverted from 5
+                };
             }
 
             // Always remove if present, to handle deselection or invalid states correctly
@@ -394,6 +396,7 @@ namespace RobTeach.Views
                     // Final check to prevent adding if points somehow ended up identical
                     if (_directionIndicator.StartPoint != _directionIndicator.EndPoint)
                     {
+                        System.Windows.Controls.Panel.SetZIndex(_directionIndicator, 99); // Set a high Z-index
                         CadCanvas.Children.Add(_directionIndicator);
                     }
                 }
