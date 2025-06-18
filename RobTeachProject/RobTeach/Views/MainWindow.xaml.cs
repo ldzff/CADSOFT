@@ -767,13 +767,34 @@ namespace RobTeach.Views
         {
             Trace.WriteLine("++++ OnCadEntityClicked Fired ++++");
             Trace.Flush();
-            if (sender is System.Windows.Shapes.Shape clickedShape && _wpfShapeToDxfEntityMap.ContainsKey(clickedShape))
+
+            // Detailed check for the main condition
+            bool isShape = sender is System.Windows.Shapes.Shape;
+            bool keyExists = false;
+            if (isShape)
             {
-                var dxfEntity = _wpfShapeToDxfEntityMap[clickedShape]; // This now correctly gets DxfEntity
+                keyExists = _wpfShapeToDxfEntityMap.ContainsKey((System.Windows.Shapes.Shape)sender);
+            }
+            Trace.WriteLine($"  -- Checking sender type: {sender?.GetType().Name ?? "null"}, IsShape: {isShape}, Map contains key: {keyExists}");
+            Trace.Flush();
+
+            if (isShape && keyExists)
+            {
+                System.Windows.Shapes.Shape clickedShape = (System.Windows.Shapes.Shape)sender;
+                Trace.WriteLine("  -- Condition (sender is Shape AND _wpfShapeToDxfEntityMap contains key) MET");
+                Trace.Flush();
+
+                var dxfEntity = _wpfShapeToDxfEntityMap[clickedShape];
+                Trace.WriteLine($"  -- Retrieved dxfEntity: {dxfEntity?.GetType().Name ?? "null"}");
+                Trace.Flush();
                 
                 // Logic for adding/removing from current spray pass's trajectories
+                Trace.WriteLine($"  -- Checking current pass index: {_currentConfiguration.CurrentPassIndex}, SprayPasses count: {_currentConfiguration.SprayPasses?.Count ?? 0}");
+                Trace.Flush();
                 if (_currentConfiguration.CurrentPassIndex < 0 || _currentConfiguration.CurrentPassIndex >= _currentConfiguration.SprayPasses.Count)
                 {
+                    Trace.WriteLine("  -- Current pass index invalid, returning.");
+                    Trace.Flush();
                     MessageBox.Show("Please select or create a spray pass first.", "No Active Pass", MessageBoxButton.OK, MessageBoxImage.Information);
                     return;
                 }
@@ -862,7 +883,17 @@ namespace RobTeach.Views
                 RefreshCurrentPassTrajectoriesListBox(); // Update the listbox view
                 RefreshCadCanvasHighlights(); // Centralized visual update
                 StatusTextBlock.Text = $"Selected {currentPass.Trajectories.Count} trajectories in {currentPass.PassName}.";
+
+                Trace.WriteLine("  -- About to call UpdateDirectionIndicator from OnCadEntityClicked");
+                Trace.Flush();
                 UpdateDirectionIndicator(); // Selection changed by clicking CAD entity
+            }
+            else
+            {
+                Trace.WriteLine("  -- Condition (sender is Shape AND _wpfShapeToDxfEntityMap contains key) FAILED");
+                Trace.Flush();
+                // It's possible that the click was on the canvas background or another UI element not part of the DXF drawing.
+                // No return needed here unless this path should explicitly not do anything further.
             }
         }
 
