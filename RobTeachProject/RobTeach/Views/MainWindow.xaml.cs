@@ -311,6 +311,9 @@ namespace RobTeach.Views
             Trace.Flush();
             const double fixedArrowLineLength = 15.0; // Fixed visual length for the arrow's line segment
 
+            Trace.WriteLine($"  -- Checking CurrentPassTrajectoriesListBox.SelectedItem. Type: {CurrentPassTrajectoriesListBox.SelectedItem?.GetType()?.FullName ?? "null"}, Value: {CurrentPassTrajectoriesListBox.SelectedItem?.ToString() ?? "null"}");
+            Trace.Flush();
+
             // Initial Setup
             if (_directionIndicator == null)
             {
@@ -879,12 +882,21 @@ namespace RobTeach.Views
                     // }
                     // newTrajectory.Points = entityPoints; // Old direct population
                     PopulateTrajectoryPoints(newTrajectory); // New call
-
-                    currentPass.Trajectories.Add(newTrajectory);
+                    currentPass.Trajectories.Add(newTrajectory); // Add to the list
                     // Visual update will be handled by RefreshCadCanvasHighlights
                 }
                 
-                RefreshCurrentPassTrajectoriesListBox(); // Update the listbox view
+                RefreshCurrentPassTrajectoriesListBox(); // This rebinds ItemsSource
+
+                // Explicitly select the newTrajectory or existingTrajectory in the ListBox
+                var trajectoryToSelect = existingTrajectory ?? newTrajectory;
+                if (trajectoryToSelect != null)
+                {
+                    CurrentPassTrajectoriesListBox.SelectedItem = trajectoryToSelect;
+                    Trace.WriteLine($"  -- Explicitly set CurrentPassTrajectoriesListBox.SelectedItem to: {trajectoryToSelect.ToString()}");
+                    Trace.Flush();
+                }
+
                 RefreshCadCanvasHighlights(); // Centralized visual update
                 StatusTextBlock.Text = $"Selected {currentPass.Trajectories.Count} trajectories in {currentPass.PassName}.";
 
