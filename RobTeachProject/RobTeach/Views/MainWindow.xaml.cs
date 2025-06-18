@@ -307,6 +307,8 @@ namespace RobTeach.Views
 
         private void UpdateDirectionIndicator()
         {
+            Trace.WriteLine("++++ UpdateDirectionIndicator Fired ++++");
+            Trace.Flush();
             const double fixedArrowLineLength = 15.0; // Fixed visual length for the arrow's line segment
 
             // Initial Setup
@@ -330,6 +332,8 @@ namespace RobTeach.Views
             // Get Selected Trajectory
             if (CurrentPassTrajectoriesListBox.SelectedItem is Trajectory selectedTrajectory)
             {
+                Trace.WriteLine($"  -- Successfully cast to Trajectory. PrimitiveType from cast: {selectedTrajectory?.PrimitiveType ?? "null trajectory object"}");
+                Trace.Flush();
                 if (selectedTrajectory.Points != null && selectedTrajectory.Points.Any())
                 {
                     Trace.WriteLine($"UpdateDirectionIndicator: Trajectory '{selectedTrajectory.PrimitiveType}' selected. Point count: {selectedTrajectory.Points.Count}");
