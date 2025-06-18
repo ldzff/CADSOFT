@@ -2,7 +2,7 @@ using System;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Shapes;
-using System.Diagnostics; // Added for Debug.WriteLine
+using System.Diagnostics; // For Trace
 
 namespace RobTeach.Views
 {
@@ -74,67 +74,54 @@ namespace RobTeach.Views
                 if (StartPoint == EndPoint || ArrowheadSize <= 0)
                 {
                     Trace.WriteLine("  -> Returning Geometry.Empty (StartPoint == EndPoint or ArrowheadSize <= 0)");
-                    Trace.Flush(); // Added flush
+                    Trace.Flush();
                     return Geometry.Empty;
                 }
 
-                // Set Fill and Stroke for the shape.
-                // The Color property of this class is used as the source.
                 this.Fill = Color;
                 this.Stroke = Color;
 
                 PathGeometry pathGeometry = new PathGeometry();
 
-                // Figure for the main line
                 PathFigure lineFigure = new PathFigure();
                 lineFigure.StartPoint = StartPoint;
                 lineFigure.Segments.Add(new LineSegment(EndPoint, true /* isStroked */));
                 pathGeometry.Figures.Add(lineFigure);
 
-                // Calculate direction vector of the arrow line
                 Vector dir = EndPoint - StartPoint;
-                if (dir.Length == 0) // Should be caught by StartPoint == EndPoint, but as a safeguard
+                if (dir.Length == 0)
                 {
                     Trace.WriteLine("  -> Returning Geometry.Empty (Direction vector length is 0 after initial check)");
-                    Trace.Flush(); // Added flush
+                    Trace.Flush();
                     return Geometry.Empty;
                 }
                 dir.Normalize();
 
-                // Angle of the arrowhead wings relative to the arrow line
                 double angleInDegrees = 30.0;
                 double angleInRadians = Math.PI * angleInDegrees / 180.0;
 
-                // Calculate points for the arrowhead wings
-                // ArrowheadSize determines the length of the arrowhead's "legs" or "wings"
-
-                // Wing 1
-                // Rotate direction vector by 'angleInRadians' and scale by ArrowheadSize
                 Vector wingDir1 = new Vector(
                     dir.X * Math.Cos(angleInRadians) - dir.Y * Math.Sin(angleInRadians),
                     dir.X * Math.Sin(angleInRadians) + dir.Y * Math.Cos(angleInRadians)
                 );
                 Point wingPoint1 = EndPoint - wingDir1 * ArrowheadSize;
 
-                // Wing 2
-                // Rotate direction vector by '-angleInRadians' and scale by ArrowheadSize
                 Vector wingDir2 = new Vector(
                     dir.X * Math.Cos(-angleInRadians) - dir.Y * Math.Sin(-angleInRadians),
                     dir.X * Math.Sin(-angleInRadians) + dir.Y * Math.Cos(-angleInRadians)
                 );
                 Point wingPoint2 = EndPoint - wingDir2 * ArrowheadSize;
 
-                // Figure for the arrowhead (a filled triangle)
                 PathFigure arrowheadFigure = new PathFigure();
-                arrowheadFigure.StartPoint = EndPoint; // Tip of the arrow
+                arrowheadFigure.StartPoint = EndPoint;
                 arrowheadFigure.Segments.Add(new LineSegment(wingPoint1, true /* isStroked */));
                 arrowheadFigure.Segments.Add(new LineSegment(wingPoint2, true /* isStroked */));
-                arrowheadFigure.IsClosed = true;  // Close the path to form a triangle
-                arrowheadFigure.IsFilled = true;  // Ensure the arrowhead is filled
+                arrowheadFigure.IsClosed = true;
+                arrowheadFigure.IsFilled = true;
                 pathGeometry.Figures.Add(arrowheadFigure);
 
                 Trace.WriteLine($"  -> Returning PathGeometry with {pathGeometry.Figures.Count} figures.");
-                Trace.Flush(); // Added flush
+                Trace.Flush();
                 return pathGeometry;
             }
         }
